@@ -48,6 +48,7 @@ class SearchParams:
     fb_docs: int = 10
     fb_terms: int = 10
     fb_orig_weight: float = 0.5
+    fb_max_df: float = 1.0  # feedback terms with df/N above this are ignored (1.0 = no filter)
 
     def describe(self) -> str:
         if self.model == "bm25":
@@ -59,7 +60,8 @@ class SearchParams:
         else:
             s = f"QL-Dirichlet(mu={self.mu:g})"
         if self.rm3:
-            s += f" + RM3(docs={self.fb_docs}, terms={self.fb_terms}, orig={self.fb_orig_weight:g})"
+            s += f" + RM3(docs={self.fb_docs}, terms={self.fb_terms}, orig={self.fb_orig_weight:g}"
+            s += f", maxdf={self.fb_max_df:g})" if self.fb_max_df < 1.0 else ")"
         return s
 
 
@@ -288,8 +290,14 @@ class Searcher:
             t for raw, t in pairs if not self.analyzer.is_stopword(raw) and len(raw) > 1 and not raw.isdigit()
         )
 
-    def feedback_model(self, doc_ints: Sequence[int], doc_weights: Sequence[float], n_terms: int) -> Dict[int, float]:
-        """Relevance model P(w|R) = sum_D P(D) * tf(w,D)/|D|, top ``n_terms`` renormalised."""
+    def feedback_model(
+        self, doc_ints: Sequence[int], doc_weights: Sequence[float], n_terms: int, max_df: float = 1.0
+    ) -> Dict[int, float]:
+        """Relevance model P(w|R) = sum_D P(D) * tf(w,D)/|D|, top ``n_terms`` renormalised.
+
+        Terms whose document frequency exceeds ``max_df * N`` are skipped as
+        candidates (too generic to help, e.g. "also", "year").
+        """
         acc: Dict[str, float] = defaultdict(float)
         wsum = float(sum(doc_weights))
         if wsum <= 0:
@@ -301,14 +309,15 @@ class Searcher:
                 continue
             for t, tf in c.items():
                 acc[t] += (wd / wsum) * tf / L
-        top = sorted(acc.items(), key=lambda x: (-x[1], x[0]))[:n_terms]
-        z = sum(v for _, v in top)
-        out = {}
-        for t, v in top:
+        limit = max_df * self.N
+        cand = []
+        for t, v in acc.items():
             tid = self.index.term_id(t)
-            if tid is not None and z > 0:
-                out[tid] = v / z
-        return out
+            if tid is not None and (max_df >= 1.0 or self.index.df(tid) <= limit):
+                cand.append((t, tid, v))
+        top = sorted(cand, key=lambda x: (-x[2], x[0]))[:n_terms]
+        z = sum(v for _, _, v in top)
+        return {tid: v / z for _, tid, v in top} if z > 0 else {}
 
     @staticmethod
     def interpolate(orig: Dict[int, float], fb: Dict[int, float], orig_weight: float) -> Dict[int, float]:
@@ -377,11 +386,11 @@ class Searcher:
         final_w = weights
         fb: Dict[int, float] = {}
         if feedback_docs:
-            fb = self.feedback_model(feedback_docs, [1.0] * len(feedback_docs), max(p.fb_terms, 20))
+            fb = self.feedback_model(feedback_docs, [1.0] * len(feedback_docs), max(p.fb_terms, 20), p.fb_max_df)
         elif p.rm3:
             top, top_s = self.top_k(scores, matched, p.fb_docs)
             if top.size:
-                fb = self.feedback_model(top, self._feedback_doc_weights(top_s, p.model), p.fb_terms)
+                fb = self.feedback_model(top, self._feedback_doc_weights(top_s, p.model), p.fb_terms, p.fb_max_df)
         if fb:
             final_w = self.interpolate(weights, fb, p.fb_orig_weight)
             scores, matched = run(final_w, False)

@@ -91,6 +91,29 @@ class InvertedIndex:
         s, e = int(self.doc_offsets[i]), int(self.doc_offsets[i + 1])
         return self._docs_mm[s:e].decode("utf-8")
 
+    def surface(self, term: str) -> str:
+        """Most frequent surface word for an index term (display only, e.g. 'presid' -> 'president')."""
+        cache = self.__dict__.setdefault("_surface_cache", {})
+        if term in cache:
+            return cache[term]
+        tid = self.term_id(term)
+        best = term
+        if tid is not None and self.meta.get("stem"):
+            from collections import Counter
+
+            docs = self.postings(tid)[0][:5]
+            c = Counter()
+            for d in docs.tolist():
+                for raw, t in self.analyzer.analyze_with_tokens(self.doc_text(d)):
+                    if t == term:
+                        c[raw] += 1
+            if c:
+                best = min(c.items(), key=lambda x: (-x[1], len(x[0]), x[0]))[0]
+        if len(cache) > 100_000:
+            cache.clear()
+        cache[term] = best
+        return best
+
     def ext_id(self, i: int) -> str:
         return self.doc_ids[i]
 

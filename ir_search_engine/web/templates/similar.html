@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}유사 문서: {{ doc_id }} - WikIR 검색 엔진{% endblock %}
+{% block content %}
+<p><a href="javascript:history.back()">‹ 뒤로</a></p>
+<section class="qinfo">
+  <div><b>문서 {{ doc_id }}</b>와 유사한 문서 (More-Like-This: 문서의 상위 tf·idf 용어로 BM25 검색) ·
+    검색된 문서 수 {{ "{:,}".format(res.n_matched) }} · {{ "%.1f"|format(res.elapsed_ms) }} ms</div>
+  <div class="small">원문 앞부분: {{ src_title }}</div>
+  <div>사용된 용어:
+    {% for t, w in res.query_terms.items() %}<span class="chip" title="색인 용어: {{ t }}">{{ surface(t) }} <small>{{ "%.3g"|format(w) }}</small></span>{% endfor %}
+  </div>
+</section>
+<table class="results">
+  <thead><tr><th>#</th><th>문서 ID</th><th>문서 제목</th><th>문서 내용</th><th>점수</th></tr></thead>
+  <tbody>
+  {% for it in items %}
+    <tr>
+      <td class="rank">{{ it.rank }}</td>
+      <td class="docid"><a href="{{ url_for('doc_page', doc_id=it.doc_id) }}">{{ it.doc_id }}</a></td>
+      <td class="title">{{ it.title }}</td>
+      <td class="snippet">{{ it.snippet|safe }}
+        <div class="links"><a href="{{ url_for('similar_page', doc_id=it.doc_id) }}">유사 문서 찾기</a></div></td>
+      <td class="score">{{ "%.4f"|format(it.score) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

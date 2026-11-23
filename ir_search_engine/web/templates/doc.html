@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}문서 {{ doc_id }} - WikIR 검색 엔진{% endblock %}
+{% block content %}
+<p><a href="javascript:history.back()">‹ 검색 결과로</a> · <a href="{{ url_for('similar_page', doc_id=doc_id) }}">유사 문서 찾기</a></p>
+<article class="doc">
+  <h2>문서 {{ doc_id }}</h2>
+  <p class="small">제목(본문 앞부분): {{ title }} · 토큰 {{ n_tokens }}개{% if q %} · 질의: <code>{{ q }}</code>{% endif %}</p>
+  <p class="body">{{ body|safe }}</p>
+</article>
+{% endblock %}

@@ -139,6 +139,33 @@ def own_metrics(qrels: Qrels, run: Run) -> Dict[str, Dict[str, float]]:
     return out
 
 
+def relevance_level_analysis(qrels: Qrels, run: Run) -> Dict[str, float]:
+    """WikIR-specific breakdown.
+
+    rel=2 is the article whose title is the query; rel=1 are articles that
+    link to it in their (removed) first sentence.
+    """
+    rr2, at1, at10, rec1 = [], [], [], []
+    for q, rels in qrels.items():
+        ranked = [d for d, _ in sorted(run.get(q, {}).items(), key=lambda x: (x[1], x[0]), reverse=True)]
+        pos = {d: i for i, d in enumerate(ranked, start=1)}
+        r2 = [d for d, r in rels.items() if r == 2]
+        r1 = [d for d, r in rels.items() if r == 1]
+        if r2:
+            best = min((pos.get(d, 10**9) for d in r2))
+            rr2.append(1.0 / best if best < 10**9 else 0.0)
+            at1.append(1.0 if best <= 1 else 0.0)
+            at10.append(1.0 if best <= 10 else 0.0)
+        if r1:
+            rec1.append(sum(1 for d in r1 if pos.get(d, 10**9) <= 1000) / len(r1))
+    return {
+        "rel2_MRR": float(np.mean(rr2)) if rr2 else 0.0,
+        "rel2_S@1": float(np.mean(at1)) if at1 else 0.0,
+        "rel2_S@10": float(np.mean(at10)) if at10 else 0.0,
+        "rel1_R@1000": float(np.mean(rec1)) if rec1 else 0.0,
+    }
+
+
 # ------------------------------------------------------- significance test
 def paired_randomization_test(a: Sequence[float], b: Sequence[float], n_perm: int = 20000, seed: int = 0) -> float:
     """Two-sided paired randomization (sign-flip permutation) test p-value

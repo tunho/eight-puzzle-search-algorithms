@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ q ~ " - " if q }}WikIR 검색 엔진{% endblock %}
+{% block content %}
+<section class="top">
+  <form class="search" method="get" action="{{ url_for('search_page') }}">
+    <label class="lbl" for="q">사용자 질의 입력</label>
+    <div class="row">
+      <input id="q" name="q" type="text" value="{{ q }}" placeholder='예: irish sea   /   "president of chile"   /   ireland -scotland' autofocus>
+      <select name="model" aria-label="랭킹 모델">
+        {% for key, (label, p) in presets.items() %}
+        <option value="{{ key }}" {{ "selected" if key == model }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">검색</button>
+    </div>
+    <details class="help">
+      <summary>질의 문법 (필터링)</summary>
+      <ul>
+        <li><code>irish sea</code> 일반 키워드 질의 (랭킹)</li>
+        <li><code>"president of chile"</code> 정확한 구문이 포함된 문서만 (positional index)</li>
+        <li><code>+ireland</code> 반드시 포함 · <code>-scotland</code> 제외 · <code>-"isle of man"</code> 구문 제외</li>
+      </ul>
+    </details>
+  </form>
+
+  <aside class="sysinfo">
+    <div class="lbl">현재 검색 시스템 정보</div>
+    <dl>
+      <dt>인덱싱된 문서 수</dt><dd>{{ "{:,}".format(info.n_docs) }}</dd>
+      {% if res %}
+      <dt>검색된 문서 수</dt><dd>{{ "{:,}".format(res.n_matched) }}</dd>
+      <dt>검색 수행 시간</dt><dd>{{ "%.1f"|format(res.elapsed_ms) }} ms</dd>
+      <dt>랭킹 모델</dt><dd class="small">{{ model_desc }}</dd>
+      {% else %}
+      <dt>색인 용어 수</dt><dd>{{ "{:,}".format(info.n_terms) }}</dd>
+      {% endif %}
+    </dl>
+  </aside>
+</section>
+
+{% if res %}
+<section class="qinfo">
+  {% if res.query_terms %}
+  <div>질의 용어(가중치):
+    {% for t, w in res.query_terms.items() %}{% if t not in res.expansion_terms %}<span class="chip" title="색인 용어: {{ t }}">{{ surface(t) }} <small>{{ "%.3g"|format(w) }}</small></span>{% endif %}{% endfor %}
+  </div>
+  {% else %}
+  <div class="warn">색인에 없는 용어만 포함된 질의입니다.</div>
+  {% endif %}
+  {% if res.expansion_terms %}
+  <div>확장 용어({{ "Relevance Feedback" if rel else "RM3" }}):
+    {% for t, w in res.expansion_terms.items() %}<span class="chip exp" title="색인 용어: {{ t }}">{{ surface(t) }} <small>{{ "%.3g"|format(w) }}</small></span>{% endfor %}
+  </div>
+  {% endif %}
+  {% if rel %}<div class="small">피드백 문서: {{ rel|join(", ") }}</div>{% endif %}
+</section>
+
+<form method="get" action="{{ url_for('search_page') }}">
+  <input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="model" value="{{ model }}">
+  <table class="results">
+    <thead><tr><th>#</th><th>문서 ID</th><th>문서 제목</th><th>문서 내용</th><th>점수</th><th title="관련 문서로 표시 후 재검색">관련</th></tr></thead>
+    <tbody>
+    {% for it in items %}
+      <tr>
+        <td class="rank">{{ it.rank }}</td>
+        <td class="docid"><a href="{{ url_for('doc_page', doc_id=it.doc_id, q=q) }}">{{ it.doc_id }}</a></td>
+        <td class="title">{{ it.title }}</td>
+        <td class="snippet">{{ it.snippet|safe }}
+          <div class="links"><a href="{{ url_for('doc_page', doc_id=it.doc_id, q=q) }}">전체 보기</a> · <a href="{{ url_for('similar_page', doc_id=it.doc_id) }}">유사 문서 찾기</a></div>
+        </td>
+        <td class="score">{{ "%.4f"|format(it.score) }}</td>
+        <td class="rf"><input type="checkbox" name="rel" value="{{ it.doc_id }}" {{ "checked" if it.doc_id in rel }}></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">검색 결과가 없습니다.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if items %}
+  <div class="rfbar"><button type="submit">선택한 관련 문서로 재검색 (Relevance Feedback)</button></div>
+  {% endif %}
+</form>
+
+{% if pages > 1 %}
+<nav class="pager">
+  {% if page > 1 %}<a href="{{ url_for('search_page', q=q, model=model, page=page-1, rel=rel) }}">‹ 이전</a>{% endif %}
+  {% for p in page_range %}
+    {% if p == page %}<span class="cur">{{ p }}</span>{% else %}<a href="{{ url_for('search_page', q=q, model=model, page=p, rel=rel) }}">{{ p }}</a>{% endif %}
+  {% endfor %}
+  {% if page < pages %}<a href="{{ url_for('search_page', q=q, model=model, page=page+1, rel=rel) }}">다음 ›</a>{% endif %}
+  <span class="small">(상위 {{ "{:,}".format(res.doc_ints|length) }}개 중 {{ page }}/{{ pages }} 페이지)</span>
+</nav>
+{% endif %}
+{% endif %}
+{% endblock %}

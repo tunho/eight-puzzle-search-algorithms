@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}WikIR 검색 엔진{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="{{ url_for('search_page') }}">WikIR Search</a>
+  <span class="sub">정보검색 기말 프로젝트 · 직접 구현한 역색인 검색 엔진</span>
+</header>
+<main class="container">
+{% block content %}{% endblock %}
+</main>
+<footer class="foot">
+  색인: {{ info.dataset }} · 문서 {{ "{:,}".format(info.n_docs) }}개 · 용어 {{ "{:,}".format(info.n_terms) }}개 ·
+  포스팅 {{ "{:,}".format(info.n_postings) }}개 · 평균 문서 길이 {{ "%.1f"|format(info.avgdl) }} 토큰 ·
+  스테밍 {{ "사용" if info.stem else "미사용" }}
+</footer>
+</body>
+</html>
