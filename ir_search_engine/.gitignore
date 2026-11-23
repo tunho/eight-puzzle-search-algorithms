@@ -7,3 +7,4 @@ __pycache__/
 venv/
 # large intermediate run files (final runs are kept in results/runs)
 results/tmp/
+results/runs/training/

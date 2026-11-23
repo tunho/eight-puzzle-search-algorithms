@@ -70,7 +70,7 @@ def fmt(v):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--configs", default=None, help="comma separated (default: all)")
-    ap.add_argument("--splits", default="validation,test")
+    ap.add_argument("--splits", default="training,validation,test")
     ap.add_argument("--baseline", default="bm25")
     ap.add_argument("--index", default="index/wikir_en1k")
     ap.add_argument("--index-nostem", default="index/wikir_en1k_nostem")
@@ -123,7 +123,9 @@ def main():
 def write_report(summary, names, baseline, best):
     lines = ["# Experiment results (wikir/en1k)", ""]
     lines.append("Parameters were tuned on the **training** split (1,444 queries, objective: MAP) "
-                 "with `scripts/tune.py`; validation and test were not used for tuning.")
+                 "with `scripts/tune.py`; validation and test were not used for tuning. "
+                 "Training-split numbers are therefore slightly optimistic for the tuned configurations, "
+                 "but with 1,444 queries they are the most stable comparison; validation/test have 100 queries each.")
     lines.append("")
     lines.append("Tuned parameters: `" + json.dumps(best) + "`")
     lines.append("")
