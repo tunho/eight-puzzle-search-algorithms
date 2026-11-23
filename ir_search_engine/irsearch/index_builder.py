@@ -33,6 +33,7 @@ import multiprocessing as mp
 import os
 import time
 from array import array
+from collections import Counter
 from typing import Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -60,12 +61,14 @@ def _process_batch(args: Tuple[int, Sequence[str]]):
     tfs = array("H")
     pos = array("H")
     dls = array("i")
+    raw = Counter()  # surface word frequencies (for spelling correction / display)
     for i, text in enumerate(texts):
-        terms = an.analyze(text)
+        toks = an.tokenize(text)
+        if len(toks) > 65535:  # positions are stored as uint16
+            toks = toks[:65535]
+        raw.update(toks)
+        terms = an.normalize(toks)
         n = len(terms)
-        if n > 65535:  # positions are stored as uint16
-            terms = terms[:65535]
-            n = 65535
         dls.append(n)
         occ: dict = {}
         for p, t in enumerate(terms):
@@ -91,6 +94,8 @@ def _process_batch(args: Tuple[int, Sequence[str]]):
         np.frombuffer(tfs, dtype=np.uint16).copy(),
         np.frombuffer(pos, dtype=np.uint16).copy(),
         np.frombuffer(dls, dtype=np.int32).copy(),
+        list(raw),
+        np.fromiter(raw.values(), dtype=np.int64, count=len(raw)),
     )
 
 
@@ -144,8 +149,12 @@ def build_index(
     parts_t, parts_d, parts_tf, parts_pos = [], [], [], []
     doclen = np.zeros(n_docs, dtype=np.int32)
 
+    surface_cf: dict = {}
+
     def consume(result):
-        start, terms, t, d, tf, ps, dl = result
+        start, terms, t, d, tf, ps, dl, words, wcounts = result
+        for w, c in zip(words, wcounts.tolist()):
+            surface_cf[w] = surface_cf.get(w, 0) + c
         gids = np.fromiter(
             (vocab.setdefault(x, len(vocab)) for x in terms), dtype=np.int32, count=len(terms)
         )
@@ -260,5 +269,11 @@ def build_index(
     }
     with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
-    log(f"[index] done in {meta['build_seconds']}s -> {out_dir}")
+    # surface-word vocabulary (word, corpus frequency, index term) + character n-gram index
+    from .ngram import build_ngram_index, save_surface_vocab
+
+    save_surface_vocab(out_dir, surface_cf, Analyzer(stem=stem), vocab, n_terms)
+    del surface_cf
+    build_ngram_index(out_dir, log=log)
+    log(f"[index] done in {round(time.time() - t0, 1)}s -> {out_dir}")
     return meta

@@ -266,3 +266,29 @@ def test_paired_randomization_test():
     assert paired_randomization_test(a, a) == 1.0
     b = [0.1] * 30
     assert paired_randomization_test(a, b) < 0.001
+
+
+def test_osa_distance():
+    from irsearch.ngram import osa_distance
+
+    assert osa_distance("chlie", "chile") == 1  # transposition
+    assert osa_distance("kitten", "sitting") == 3
+    assert osa_distance("", "ab") == 2
+    assert osa_distance("abc", "abc") == 0
+    assert osa_distance("abcdef", "a", limit=2) == 3  # early exit returns limit + 1
+
+
+def test_spelling_correction(engine):
+    idx, s, docs = engine
+    # OOV typos are replaced by the closest frequent corpus word
+    res = s.search("irsh sea", k=idx.N)
+    assert res.corrections == {"irsh": "irish"}
+    ref = s.search("irish sea", k=idx.N)
+    assert res.doc_ints.tolist() == ref.doc_ints.tolist()
+    res = s.search("presidnet of chlie", k=10)
+    assert res.corrections == {"presidnet": "president", "chlie": "chile"}
+    # correction can be disabled; in-vocabulary words are never changed
+    assert s.search("irsh sea", SearchParams(spell=False), k=10).corrections == {}
+    assert s.search("irish sea", k=10).corrections == {}
+    # nothing close -> no correction
+    assert s.search("qqqqzzzz", k=10).corrections == {}

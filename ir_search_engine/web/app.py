@@ -105,6 +105,7 @@ def search_page():
         ctx["page"] = page
         ctx["items"] = _items(res, (page - 1) * PER_PAGE, page * PER_PAGE, main, extra)
         ctx["res"] = res
+        ctx["dym"] = None if res.corrections else STATE["searcher"].did_you_mean(q)
         ctx["model_desc"] = params.describe() + (" + Relevance Feedback" if fb_ints else "")
         ctx["page_range"] = _page_range(page, ctx["pages"])
     return render_template("index.html", **ctx)
@@ -167,7 +168,7 @@ def api_search():
         {
             "query": q, "model": params.describe(), "n_docs_indexed": idx.N, "n_matched": res.n_matched,
             "elapsed_ms": round(res.elapsed_ms, 2), "query_terms": res.query_terms,
-            "expansion_terms": res.expansion_terms,
+            "expansion_terms": res.expansion_terms, "corrections": res.corrections,
             "results": _items(res, 0, k, main, extra),
         }
     )

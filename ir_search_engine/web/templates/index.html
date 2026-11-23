@@ -40,6 +40,13 @@
 
 {% if res %}
 <section class="qinfo">
+  {% if res.corrections %}
+  <div class="notice">오타 교정(n-gram 색인):
+    {% for a, b in res.corrections.items() %}<b>{{ a }}</b> → <b>{{ b }}</b>{{ ", " if not loop.last }}{% endfor %} 로 검색했습니다.</div>
+  {% endif %}
+  {% if dym %}
+  <div class="notice">이것을 찾으셨나요? <a href="{{ url_for('search_page', q=dym, model=model) }}"><b>{{ dym }}</b></a></div>
+  {% endif %}
   {% if res.query_terms %}
   <div>질의 용어(가중치):
     {% for t, w in res.query_terms.items() %}{% if t not in res.expansion_terms %}<span class="chip" title="색인 용어: {{ t }}">{{ surface(t) }} <small>{{ "%.3g"|format(w) }}</small></span>{% endif %}{% endfor %}

@@ -46,6 +46,7 @@ python scripts/run_experiments.py      # validation/test 평가 → results/expe
 | 인덱싱 | Inverted Index 구축 | term → (doc, tf, positions) CSR 구조, 병렬 구축 | `irsearch/index_builder.py` |
 | 인덱싱 (필수) | TF-IDF 또는 BM25 가중치 | BM25, TF-IDF(ltc 코사인), QL-Dirichlet 모두 구현 | `irsearch/searcher.py` |
 | 인덱싱 (선택) | positional index | 모든 토큰 위치 저장 → 구문 검색, 근접도 점수 | `index_builder.py`, `searcher.phrase_matches` |
+| 인덱싱 (선택) | n-gram | 어휘(표면형 79만 단어) 문자 trigram 색인 → 오타 교정·미등록어 대체, "이것을 찾으셨나요?" | `irsearch/ngram.py` |
 | 검색 | 질의 처리 | 토큰화·불용어·스테밍, 질의 문법(`"구문"`, `+필수`, `-제외`) | `irsearch/query_parser.py` |
 | 검색 | 랭킹 알고리즘 | BM25 / TF-IDF cosine / Query Likelihood | `searcher.score_*` |
 | 검색 (선택) | Query expansion | RM3 의사 적합성 피드백 | `searcher.feedback_model` |
@@ -91,6 +92,8 @@ python scripts/run_experiments.py      # validation/test 평가 → results/expe
 | `post_docs.npy`, `post_tf.npy` | 포스팅: 문서 번호(오름차순), 용어 빈도 |
 | `pos_offsets.npy`, `positions.npy` | 포스팅별 토큰 위치(positional index) |
 | `cf.npy`, `doclen.npy`, `doc_norm_ltc.npy` | 컬렉션 빈도, 문서 길이, TF-IDF 문서 벡터 노름 |
+| `surface_words.json`, `surface_cf.npy`, `surface_tid.npy` | 표면형 단어, 코퍼스 빈도, 대응 색인 용어 |
+| `ngram_list.json`, `ngram_offsets.npy`, `ngram_words.npy` | 문자 trigram → 단어 역색인 (오타 교정) |
 | `doc_ids.json`, `docs.bin`, `doc_offsets.npy` | 외부 문서 ID, 스니펫용 문서 저장소 |
 
 색인 통계: 문서 369,721 · 용어 687,355 · 포스팅 42,181,032 · 위치 73,093,729 · 평균 문서 길이 197.7 토큰.
@@ -109,6 +112,10 @@ python scripts/run_experiments.py      # validation/test 평가 → results/expe
 * **RM3**: 1차 검색 상위 k개 문서로 `P(w|R) = Σ_D P(D|Q) · tf(w,D)/|D|`를 추정합니다.
   상위 m개 용어를 원 질의와 `λ·P(w|Q) + (1−λ)·P(w|R)`로 섞어 2차 검색합니다.
   df 비율이 큰 범용어("also", "year" 등)는 확장 후보에서 제외할 수 있습니다(`fb_max_df`).
+* **오타 교정 (n-gram)**: 색인에 없는 질의어는 문자 trigram을 공유하는 후보와 편집거리 1 변형을 모읍니다.
+  OSA(Damerau-Levenshtein) 거리가 가장 작은 단어로 바꾸고, 거리가 같으면 빈도가 높은 단어를 고릅니다
+  (`irsh`→`irish`, `chlie`→`chile`). 허용 거리는 단어 길이 ≤4: 1, ≤10: 2, 그 이상: 3입니다.
+  색인에 있지만 매우 드문 단어(빈도 ≤3)는 질의를 바꾸지 않고 "이것을 찾으셨나요?"만 제안합니다.
 
 ---
 
@@ -123,6 +130,7 @@ python scripts/run_experiments.py      # validation/test 평가 → results/expe
 * `전체 보기`: 문서 전문 + 하이라이트, `유사 문서 찾기`: More-Like-This
 * `관련` 체크 후 **선택한 관련 문서로 재검색**: 적합성 피드백(확장 용어는 초록색으로 표시)
 * 질의 문법: `"irish sea"`(구문), `+ireland`(필수), `-scotland`(제외), `-"isle of man"`(구문 제외)
+* 오타가 있으면 자동 교정 내역(예: `irsh → irish`)이나 "이것을 찾으셨나요?" 링크가 표시됩니다.
 * JSON API: `/api/search?q=irish+sea&model=bm25&k=10`
 
 ### 터미널 UI (`python scripts/search_cli.py`)
@@ -181,6 +189,7 @@ ir_search_engine/
 │   ├── index.py         #   색인 로딩(memory-map), 포스팅/위치 접근
 │   ├── query_parser.py  #   질의 문법
 │   ├── searcher.py      #   랭킹 모델, 근접도, RM3, 피드백, 필터, top-k
+│   ├── ngram.py         #   문자 n-gram 색인, 오타 교정
 │   ├── snippets.py      #   스니펫·하이라이트
 │   ├── presets.py       #   튜닝된 파라미터 프리셋
 │   ├── runner.py        #   질의 집합 일괄 실행

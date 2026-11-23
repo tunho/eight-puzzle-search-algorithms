@@ -62,6 +62,8 @@ class CLI:
         extra = set(res.expansion_terms)
         n = len(res.doc_ints)
         pages = max(1, (n + PER_PAGE - 1) // PER_PAGE)
+        if getattr(res, "corrections", None):
+            print("오타 교정:", ", ".join(f"{a} -> {b}" for a, b in res.corrections.items()))
         print(f"\n검색된 문서 수: {res.n_matched:,} | 수행 시간: {res.elapsed_ms:.1f} ms | {res.params.describe() if res.params else ''}")
         if res.expansion_terms:
             print("확장 용어:", ", ".join(f"{self.idx.surface(t)}({w:.3g})" for t, w in res.expansion_terms.items()))
@@ -80,6 +82,9 @@ class CLI:
         self.page = 1
         self.last_q = q
         self.show()
+        dym = None if self.res.corrections else self.s.did_you_mean(q)
+        if dym:
+            print(f"이것을 찾으셨나요? {dym}")
 
     def handle(self, line: str) -> bool:
         line = line.strip()

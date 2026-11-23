@@ -49,6 +49,7 @@ class SearchParams:
     fb_terms: int = 10
     fb_orig_weight: float = 0.5
     fb_max_df: float = 1.0  # feedback terms with df/N above this are ignored (1.0 = no filter)
+    spell: bool = True  # replace out-of-vocabulary query terms via the character n-gram index
 
     def describe(self) -> str:
         if self.model == "bm25":
@@ -75,6 +76,7 @@ class SearchResult:
     query_terms: Dict[str, float] = field(default_factory=dict)  # term -> weight actually used
     expansion_terms: Dict[str, float] = field(default_factory=dict)  # RM3 / RF added terms
     params: Optional[SearchParams] = None
+    corrections: Dict[str, str] = field(default_factory=dict)  # OOV query word -> index term used
 
 
 class Searcher:
@@ -85,6 +87,59 @@ class Searcher:
         self.avgdl = index.avgdl
         self._norm_cache: Dict[Tuple[float, float], np.ndarray] = {}
         self._max_doclen = int(index.meta.get("max_doclen", 0)) or int(index.doclen.max())
+        self._suggester = None
+        self._suggest_cache: Dict[Tuple[str, str], Optional[Tuple[str, int, int]]] = {}
+
+    # ------------------------------------------------- spelling correction
+    @property
+    def suggester(self):
+        if self._suggester is None:
+            from .ngram import NgramSuggester
+
+            self._suggester = NgramSuggester(self.index.index_dir)
+        return self._suggester
+
+    def _cached(self, kind: str, word: str):
+        key = (kind, word)
+        if key not in self._suggest_cache:
+            fn = self.suggester.best_match if kind == "fix" else self.suggester.did_you_mean
+            if len(self._suggest_cache) > 20_000:
+                self._suggest_cache.clear()
+            self._suggest_cache[key] = fn(word)
+        return self._suggest_cache[key]
+
+    def _apply_corrections(self, pq: ParsedQuery) -> Dict[str, str]:
+        """Replace out-of-vocabulary query words by the closest corpus word."""
+        seen, fixed = set(), {}
+        groups = [pq.tokens, pq.exclude] + list(pq.exclude_phrases)
+        for grp in groups:
+            for tok in grp:
+                if id(tok) in seen:
+                    continue
+                seen.add(id(tok))
+                if tok.is_stop or self.index.term_id(tok.term) is not None:
+                    continue
+                m = self._cached("fix", tok.raw)
+                if m is not None:
+                    fixed[tok.raw] = m[0]
+                    tok.term = self.index.terms[m[1]]
+        return fixed
+
+    def did_you_mean(self, query: str) -> Optional[str]:
+        """'Did you mean' query for rare (but indexed) words; the query itself is not changed."""
+        pq = parse_query(query, self.analyzer)
+        repl = {}
+        for tok in pq.tokens + pq.exclude:
+            if tok.is_stop or tok.raw in repl:
+                continue
+            m = self._cached("dym", tok.raw)
+            if m is not None:
+                repl[tok.raw] = m[0]
+        if not repl:
+            return None
+        import re
+
+        return re.sub(r"[A-Za-z0-9]+", lambda mo: repl.get(mo.group().lower(), mo.group()), query)
 
     # ----------------------------------------------------------- statistics
     def bm25_idf(self, df) -> np.ndarray:
@@ -363,8 +418,9 @@ class Searcher:
         p = params or SearchParams()
         t0 = time.perf_counter()
         pq = parse_query(query, self.analyzer)
+        corrections = self._apply_corrections(pq) if p.spell else {}
         weights = self.query_weights(pq.tokens, p.remove_stopwords)
-        res = SearchResult(np.zeros(0, np.int64), np.zeros(0), 0, 0.0, pq, {}, {}, p)
+        res = SearchResult(np.zeros(0, np.int64), np.zeros(0), 0, 0.0, pq, {}, {}, p, corrections)
         if not weights:
             res.elapsed_ms = (time.perf_counter() - t0) * 1000
             return res

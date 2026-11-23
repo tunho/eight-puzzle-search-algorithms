@@ -93,10 +93,19 @@ class InvertedIndex:
 
     def surface(self, term: str) -> str:
         """Most frequent surface word for an index term (display only, e.g. 'presid' -> 'president')."""
+        if "_display" not in self.__dict__:
+            path = os.path.join(self.index_dir, "term_display.json")
+            self._display = None
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    self._display = json.load(f)
+        tid = self.term_id(term)
+        if self._display is not None and tid is not None and self._display[tid]:
+            return self._display[tid]
+        # fallback for indexes built without the surface vocabulary
         cache = self.__dict__.setdefault("_surface_cache", {})
         if term in cache:
             return cache[term]
-        tid = self.term_id(term)
         best = term
         if tid is not None and self.meta.get("stem"):
             from collections import Counter
