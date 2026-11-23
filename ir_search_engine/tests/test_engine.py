@@ -232,3 +232,37 @@ def test_top_k_tie_break(engine):
     ids = [idx.ext_id(i) for i in docs.tolist()]
     assert ids[0] == idx.ext_id(1)
     assert ids[1:] == sorted(ids[1:], reverse=True)
+
+
+def test_feedback_df_filter(engine):
+    idx, s, _ = engine
+    res = s.search("irish sea", k=5)
+    docs = res.doc_ints[:3].tolist()
+    full = s.feedback_model(docs, [1.0] * len(docs), 50, max_df=1.0)
+    ratios = sorted(idx.df(t) / idx.N for t in full)
+    thr = ratios[len(ratios) // 2]  # keep roughly the rarer half
+    filt = s.feedback_model(docs, [1.0] * len(docs), 50, max_df=thr)
+    assert filt and all(idx.df(t) <= thr * idx.N for t in filt)
+    assert all(t in filt for t in full if idx.df(t) <= thr * idx.N)
+    assert any(t not in filt for t in full)
+    assert sum(filt.values()) == pytest.approx(1.0)
+
+
+def test_relevance_level_analysis():
+    from irsearch.evaluation import relevance_level_analysis
+
+    qrels = {"1": {"a": 2, "b": 1, "c": 1}, "2": {"x": 2, "y": 1}}
+    run = {"1": {"b": 3.0, "a": 2.0, "z": 1.0}, "2": {"x": 5.0}}
+    r = relevance_level_analysis(qrels, run)
+    assert r["rel2_MRR"] == pytest.approx((0.5 + 1.0) / 2)
+    assert r["rel2_S@1"] == pytest.approx(0.5)
+    assert r["rel1_R@1000"] == pytest.approx((0.5 + 0.0) / 2)
+
+
+def test_paired_randomization_test():
+    from irsearch.evaluation import paired_randomization_test
+
+    a = [0.5] * 30
+    assert paired_randomization_test(a, a) == 1.0
+    b = [0.1] * 30
+    assert paired_randomization_test(a, b) < 0.001

@@ -13,6 +13,7 @@ Outputs (results/)::
     runs/<split>/<config>.run.gz              TREC run files (top 1000 per query)
     metrics/<split>/<config>.json             mean + per-query metrics
     metrics/<split>/<config>.trec_eval.txt    same, in `trec_eval -q` layout
+    qrels/<split>.qrels                       relevance judgments in TREC format
     experiments.md                            result tables + significance tests
 """
 import argparse
@@ -27,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from irsearch.evaluation import (  # noqa: E402
     MEASURES, evaluate, load_qrels, load_queries, paired_randomization_test,
-    relevance_level_analysis, save_metrics, to_run, write_run, write_trec_eval_style,
+    relevance_level_analysis, save_metrics, to_run, write_qrels, write_run, write_trec_eval_style,
 )
 from irsearch.index import InvertedIndex  # noqa: E402
 from irsearch.presets import load_best  # noqa: E402
@@ -92,6 +93,8 @@ def main():
     summary = {}
     for split in splits:
         queries, qrels = load_queries(split), load_qrels(split)
+        # qrels in TREC format so the runs can also be checked with the trec_eval binary
+        write_qrels(os.path.join(RES, "qrels", f"{split}.qrels"), qrels)
         summary[split] = {}
         for n in names:
             desc, which, p = cfgs[n]
@@ -132,8 +135,8 @@ def write_report(summary, names, baseline, best):
         lines.append(f"## {split} ({len(next(iter(res.values()))['perq'])} queries)")
         lines.append("")
         lines.append("| config | " + " | ".join(MEASURES[c] for c in cols)
-                     + " | rel2 MRR | rel2 S@1 | rel1 R@1000 | ms/query |")
-        lines.append("|---|" + "---|" * (len(cols) + 4))
+                     + f" | rel2 MRR | rel2 S@1 | rel1 R@1000 | AP W/T/L vs {baseline} | ms/query |")
+        lines.append("|---|" + "---|" * (len(cols) + 5))
         base = res.get(baseline)
         for n in names:
             if n not in res:
@@ -150,8 +153,12 @@ def write_report(summary, names, baseline, best):
                 val = fmt(r["mean"][c]) + mark
                 cells.append(f"**{val}**" if abs(r["mean"][c] - best_val) < 1e-12 else val)
             e = r["extra"]
+            wtl = "-"
+            if base is not None and n != baseline:
+                diffs = [r["perq"][q]["map"] - base["perq"][q]["map"] for q in r["perq"]]
+                wtl = f"{sum(d > 1e-9 for d in diffs)}/{sum(abs(d) <= 1e-9 for d in diffs)}/{sum(d < -1e-9 for d in diffs)}"
             lines.append(f"| `{n}` {r['desc']} | " + " | ".join(cells)
-                         + f" | {fmt(e['rel2_MRR'])} | {fmt(e['rel2_S@1'])} | {fmt(e['rel1_R@1000'])} | {r['ms']:.1f} |")
+                         + f" | {fmt(e['rel2_MRR'])} | {fmt(e['rel2_S@1'])} | {fmt(e['rel1_R@1000'])} | {wtl} | {r['ms']:.1f} |")
         lines.append("")
     with open(os.path.join(RES, "experiments.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
