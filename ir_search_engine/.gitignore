@@ -1,0 +1,9 @@
+# built index (excluded from submission; rebuild with scripts/build_index.py)
+index/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+# large intermediate run files (final runs are kept in results/runs)
+results/tmp/

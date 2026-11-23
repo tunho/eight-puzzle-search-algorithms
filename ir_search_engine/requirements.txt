@@ -1,0 +1,7 @@
+# Python >= 3.9
+ir_datasets>=0.5      # dataset download (wikir/en1k)
+numpy>=1.22           # array maths for the self-written index / ranking code
+PyStemmer>=2.2        # Snowball English stemmer (text normalisation only)
+Flask>=2.2            # web UI
+pytrec-eval-terrier>=0.5.6   # trec_eval bindings (import name: pytrec_eval); prebuilt wheels
+pytest>=7             # tests
