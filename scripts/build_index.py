@@ -1,6 +1,6 @@
 """Build the inverted index for wikir/en1k.
 
-Usage (from the ``ir_search_engine`` directory)::
+Usage (from the repository root)::
 
     python scripts/build_index.py                     # stemmed index -> index/wikir_en1k
     python scripts/build_index.py --no-stem --out index/wikir_en1k_nostem

@@ -40,9 +40,10 @@ def term_html(s: str) -> str:
 
 
 class CLI:
-    def __init__(self, index_dir: str, model: str):
-        self.idx = InvertedIndex(index_dir)
+    def __init__(self, index_dir: str, model: str, preload: bool = True):
+        self.idx = InvertedIndex(index_dir, mmap_mode=None if preload else "r")
         self.s = Searcher(self.idx)
+        self.s.suggester  # load spelling-correction vocabulary up front
         self.presets = presets()
         self.model = model if model in self.presets else "bm25"
         self.res = None
@@ -136,8 +137,9 @@ def main():
     ap.add_argument("--index", default=os.path.join("index", "wikir_en1k"))
     ap.add_argument("--model", default="bm25")
     ap.add_argument("-q", "--query", default=None)
+    ap.add_argument("--mmap", action="store_true", help="memory-map the index instead of loading it into RAM")
     args = ap.parse_args()
-    cli = CLI(args.index, args.model)
+    cli = CLI(args.index, args.model, preload=not args.mmap)
     cli.info()
     if args.query:
         cli.search(args.query)

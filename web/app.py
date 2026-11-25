@@ -1,6 +1,6 @@
 """Web UI for the search engine (Flask).
 
-Run from the ``ir_search_engine`` directory::
+Run from the repository root::
 
     python web/app.py                  # http://127.0.0.1:5000
     python web/app.py --port 8000 --index index/wikir_en1k
@@ -28,11 +28,17 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 STATE = {}
 
 
-def init(index_dir: str, default_model: str = "bm25") -> None:
+def init(index_dir: str, default_model: str = "bm25", preload: bool = True) -> None:
+    """``preload``: read postings/positions into RAM (~600MB) so that query
+    latency does not depend on the disk cache; ``False`` memory-maps them."""
     t0 = time.time()
-    idx = InvertedIndex(index_dir)
+    idx = InvertedIndex(index_dir, mmap_mode=None if preload else "r")
     STATE["index"] = idx
     STATE["searcher"] = Searcher(idx)
+    # warm up: load the spelling-correction vocabulary and touch the index pages
+    # so that the first query in the demo does not include loading time
+    STATE["searcher"].suggester
+    STATE["searcher"].search("irish sea")
     STATE["presets"] = presets()
     STATE["default_model"] = default_model
     STATE["load_seconds"] = time.time() - t0
@@ -180,8 +186,9 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=5000)
     ap.add_argument("--model", default="bm25", help="default ranking preset")
+    ap.add_argument("--mmap", action="store_true", help="memory-map the index instead of loading it into RAM")
     args = ap.parse_args()
-    init(args.index, args.model)
+    init(args.index, args.model, preload=not args.mmap)
     print(f"index loaded in {STATE['load_seconds']:.1f}s: {STATE['index'].N:,} docs -> http://{args.host}:{args.port}")
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
 
